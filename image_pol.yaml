@@ -1,0 +1,16 @@
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImagePolicy
+metadata:
+  name: eks-example-image-pol
+  namespace: flux-system
+spec:
+  filterTags:
+    extract: ""
+    pattern: ^\d+\.\d$
+  imageRepositoryRef:
+    name: eks-example-image-repo
+  policy:
+    numerical:
+      order: asc
+
