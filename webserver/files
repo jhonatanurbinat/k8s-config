@@ -1,0 +1,188 @@
+eks-example-deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eks-example
+  namespace: webserver
+  labels:
+    app: eks-example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eks-example
+  template:
+    metadata:
+      labels:
+        app: eks-example
+    spec:
+      containers:
+        - name: eks-example
+          image: 956959394519.dkr.ecr.us-east-1.amazonaws.com/eks-example:latest@sha256:45693b7362a5945afd03277504319bc40fb3ee803f8db5189e35a7eda1860d38 # {"$imagepolicy": "flux-system:eks-example-image-pol"}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+
+eks-example-svc.yaml 
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: eks-example
+  namespace: webserver
+  labels:
+    app: eks-example
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: eks-example
+
+
+fluent-bit.yaml
+
+
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: aws-for-fluent-bit
+  namespace: kube-system
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: aws-for-fluent-bit
+      version: "0.1.30"
+      sourceRef:
+        kind: HelmRepository
+        name: aws-eks-charts
+        namespace: flux-system
+  values:
+    serviceAccount:
+      create: true
+      name: fluent-bit
+      annotations:
+        eks.amazonaws.com/role-arn: "arn:aws:iam::956959394519:role/fluent-bit"
+
+    cloudWatchLogs:
+      enabled: false
+    firehose:
+      enabled: false
+    kinesis:
+      enabled: false
+
+    opensearch:
+      enabled: true
+      host: "vpc-paulurbinatest-jsp7wwhkxdhsqrag7zight26ti.us-east-1.es.amazonaws.com"
+      port: 443
+      tls: "On"
+      awsAuth: "On"
+      awsRegion: "us-east-1"
+      # --- ESTAS TRES LÍNEAS COMPLEMENTAN LA FIRMA SIGV4 CON EL ROL ---
+      awsRoleARN: "arn:aws:iam::956959394519:role/fluent-bit"
+      tlsVerify: "On"
+      replaceDots: "On"
+      # -----------------------------------------------------------------
+      logstashPrefix: "kubernetes-logs"
+      logstashFormat: "On"
+      suppressTypeName: "On"
+
+fluentbit-repository.yaml 
+
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: aws-eks-charts
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://aws.github.io/eks-charts
+
+
+image_pol.yaml
+
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: eks-example-image-pol
+  namespace: flux-system
+spec:
+  filterTags:
+    extract: ""
+    pattern: ^\d+\.\d$
+  imageRepositoryRef:
+    name: eks-example-image-repo
+  policy:
+    numerical:
+      order: asc
+
+
+image_repository.yaml
+
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: eks-example-image-repo
+  namespace: flux-system
+spec:
+  image: 956959394519.dkr.ecr.us-east-1.amazonaws.com/eks-example
+  interval: 10s
+
+----
+image_update.yaml 
+
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: eks-example-img-update
+  namespace: flux-system
+spec:
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: fluxbox@example.com
+        name: fluxbot
+      messageTemplate: '{{range .Updated. Images}}{{println .}}{{end}}'
+    push:
+      branch: main
+  interval: 1m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+
+
+namespace.yaml 
+
+apiVersion: v1
+kind: Namespace
+metadata:
+    labels:
+        name: webserver
+    name: webserver
+
+
+
+
+
+
